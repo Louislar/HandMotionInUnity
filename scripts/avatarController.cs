@@ -171,9 +171,13 @@ public class avatarController : MonoBehaviour
             yield return new WaitForSeconds(0.05f);
         }
         jsonDeserializer jsonConverter = new jsonDeserializer();
+        //jsonConverter.serializeAndOutputFile(
+        //    new MediaPipeResult() { results = avatarPositionData.ToArray() }, 
+        //    "jsonPositionData/leftFrontKickCombinations/leftFrontKickPosition(True, False, True, False, False, False).json"
+        //    );
         jsonConverter.serializeAndOutputFile(
-            new MediaPipeResult() { results = avatarPositionData.ToArray() }, 
-            "jsonPositionData/leftFrontKickCombinations/leftFrontKickPosition(True, False, True, False, False, False).json"
+            new MediaPipeResult() { results = avatarPositionData.ToArray() },
+            "jsonPositionData/bodyMotionPosition/leftFrontKickPosition.json"
             );
         //print($"get bone: {avatarAnim.GetBoneTransform(HumanBodyBones.LeftUpperLeg).position.x}");
         yield return null;
