@@ -2,27 +2,14 @@
 using UnityEngine.UI;
 using System.Collections;
 using System.Collections.Generic;
-using Unity.Barracuda;
 
 /// <summary>
 /// Define Joint points
 /// </summary>
 public class VNectBarracudaRunner : MonoBehaviour
 {
-    /// <summary>
-    /// Neural network model
-    /// </summary>
-    public NNModel NNModel;
-
-    public WorkerFactory.Type WorkerType = WorkerFactory.Type.Auto;
-    public bool Verbose = true;
-
-    public VNectModel VNectModel;
 
     public VideoCapture videoCapture;
-
-    private Model _model;
-    private IWorker _worker;
 
     /// <summary>
     /// Coordinates of joint points
@@ -158,58 +145,8 @@ public class VNectBarracudaRunner : MonoBehaviour
         // Disabel sleep
         Screen.sleepTimeout = SleepTimeout.NeverSleep;
 
-        // Init model
-        _model = ModelLoader.Load(NNModel, Verbose);
-        _worker = WorkerFactory.CreateWorker(WorkerType, _model, Verbose);
-
         StartCoroutine("WaitLoad");
 
-    }
-
-    private void Update()
-    {
-        if (!Lock)
-        {
-            UpdateVNectModel();
-        }
-    }
-
-    private IEnumerator WaitLoad()
-    {
-        inputs[inputName_1] = new Tensor(InitImg);
-        inputs[inputName_2] = new Tensor(InitImg);
-        inputs[inputName_3] = new Tensor(InitImg);
-
-        // Create input and Execute model
-        yield return _worker.StartManualSchedule(inputs);
-
-        // Get outputs
-        for (var i = 2; i < _model.outputs.Count; i++)
-        {
-            b_outputs[i] = _worker.PeekOutput(_model.outputs[i]);
-        }
-
-        // Get data from outputs
-        offset3D = b_outputs[2].data.Download(b_outputs[2].shape);
-        heatMap3D = b_outputs[3].data.Download(b_outputs[3].shape);
-
-        // Release outputs
-        for (var i = 2; i < b_outputs.Length; i++)
-        {
-            b_outputs[i].Dispose();
-        }
-
-        // Init VNect model
-        jointPoints = VNectModel.Init();
-
-        PredictPose();
-
-        yield return new WaitForSeconds(WaitTimeModelLoad);
-
-        // Init VideoCapture
-        videoCapture.Init(InputImageSize, InputImageSize);
-        Lock = false;
-        Msg.gameObject.SetActive(false);
     }
 
     private const string inputName_1 = "input.1";
@@ -220,59 +157,6 @@ public class VNectBarracudaRunner : MonoBehaviour
     private const string inputName_2 = "1";
     private const string inputName_3 = "2";
     */
-
-    private void UpdateVNectModel()
-    {
-        input = new Tensor(videoCapture.MainTexture);
-        if (inputs[inputName_1] == null)
-        {
-            inputs[inputName_1] = input;
-            inputs[inputName_2] = new Tensor(videoCapture.MainTexture);
-            inputs[inputName_3] = new Tensor(videoCapture.MainTexture);
-        }
-        else
-        {
-            inputs[inputName_3].Dispose();
-
-            inputs[inputName_3] = inputs[inputName_2];
-            inputs[inputName_2] = inputs[inputName_1];
-            inputs[inputName_1] = input;
-        }
-
-        StartCoroutine(ExecuteModelAsync());
-    }
-
-    /// <summary>
-    /// Tensor has input image
-    /// </summary>
-    /// <returns></returns>
-    Tensor input = new Tensor();
-    Dictionary<string, Tensor> inputs = new Dictionary<string, Tensor>() { { inputName_1, null }, { inputName_2, null }, { inputName_3, null }, };
-    Tensor[] b_outputs = new Tensor[4];
-
-    private IEnumerator ExecuteModelAsync()
-    {
-        // Create input and Execute model
-        yield return _worker.StartManualSchedule(inputs);
-
-        // Get outputs
-        for (var i = 2; i < _model.outputs.Count; i++)
-        {
-            b_outputs[i] = _worker.PeekOutput(_model.outputs[i]);
-        }
-
-        // Get data from outputs
-        offset3D = b_outputs[2].data.Download(b_outputs[2].shape);
-        heatMap3D = b_outputs[3].data.Download(b_outputs[3].shape);
-        
-        // Release outputs
-        for (var i = 2; i < b_outputs.Length; i++)
-        {
-            b_outputs[i].Dispose();
-        }
-
-        PredictPose();
-    }
 
     /// <summary>
     /// Predict positions of each of joints based on network

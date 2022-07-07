@@ -12,8 +12,10 @@ public class handRotationController : MonoBehaviour
     public bool updateRotationToAvatar;
 
     // 多種mapping的rotation結果
+    public bool isReadMultipleResultsFileNames;
     private List<string> multipleRotResultsFileNames;
     private List<MediaPipeResult> mappedRotResults;
+    public string curVisualFileName;
 
 
     /// <summary>
@@ -62,7 +64,21 @@ public class handRotationController : MonoBehaviour
     /// <returns></returns>
     IEnumerator updateMultipleJointsRotationsSequential()
     {
-
+        for(int i=0; i<mappedRotResults.Count; ++i)
+        {
+            
+            curVisualFileName = multipleRotResultsFileNames[i].Substring(
+                multipleRotResultsFileNames[i].Length - 50, 50
+                ); //當前撥放的檔案名稱
+            MediaPipeResult curRotationMappedResult = mappedRotResults[i];
+            int curIndex = 0;
+            while (curIndex < curRotationMappedResult.results.Length)
+            {
+                updateJointRotations(curRotationMappedResult.results[curIndex]);
+                ++curIndex;
+                yield return new WaitForSeconds(0.05f);
+            }
+        }
         yield return null;
     }
 
@@ -104,25 +120,50 @@ public class handRotationController : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        jointBones = new handLMsController.JointBone[4];
+        for (var i = 0; i < 4; i++) jointBones[i] = new handLMsController.JointBone();
+        mappedRotResults = new List<MediaPipeResult>();
+
+        // Read single mapping rotation result
         //rotationResult = jsonDeserializer.readAndParseRotation("jsonRotationData/handRotationAfterMapping/leftFrontKick.json");
         rotationResult = jsonDeserializer.readAndParseRotation(
             //"jsonRotationData/handRotationAfterMapping/leftFrontKickCombinations/leftFrontKick(True, False, True, False, False, False).json"
             //"jsonRotationData/handRotationAfterMapping/leftFrontKickCombinations/leftFrontKick(True, False, True, True, True, True).json"
             "jsonRotationData/handRotationAfterMapping/leftFrontKickCombinations/leftFrontKick(True, True, True, True, True, True).json"
             );
-        // Read multiple mapping rotation result
+
+        // Read multiple mapping rotation results
         List<string> boolPermutationStrings = boolPermutation(6);
         string rootFileName = "jsonRotationData/handRotationAfterMapping/leftFrontKickCombinations/leftFrontKick";
-        // TODO: auto-generate所有true false組合的檔名，最後所有檔名再補上".json"
-        multipleRotResultsFileNames = new List<string> {
-            "jsonRotationData/handRotationAfterMapping/leftFrontKickCombinations/leftFrontKick(True, True, True, True, True, True).json",
-            "jsonRotationData/handRotationAfterMapping/leftFrontKickCombinations/leftFrontKick(True, False, True, True, True, True).json",
-            "jsonRotationData/handRotationAfterMapping/leftFrontKickCombinations/leftFrontKick(True, True, True, True, True, True).json"
-        };
-        foreach (string str in multipleRotResultsFileNames) print(str);
-        jointBones = new handLMsController.JointBone[4];
-        for (var i = 0; i < 4; i++) jointBones[i] = new handLMsController.JointBone();
-        StartCoroutine(updateRotationOnce());
+        // generate所有true false組合的檔名，最後所有檔名再補上".json"
+        multipleRotResultsFileNames = new List<string>();
+        foreach (string str in boolPermutationStrings) multipleRotResultsFileNames.Add(rootFileName + str + ".json");
+        // 測試用，先使用小數量的資料測試
+        //multipleRotResultsFileNames = new List<string>
+        //{
+        //    "jsonRotationData/handRotationAfterMapping/leftFrontKickCombinations/leftFrontKick(True, True, True, True, True, True).json", 
+        //    "jsonRotationData/handRotationAfterMapping/leftFrontKickCombinations/leftFrontKick(True, False, True, False, False, False).json",
+        //    "jsonRotationData/handRotationAfterMapping/leftFrontKickCombinations/leftFrontKick(True, False, True, True, True, True).json"
+        //};
+        // 測試用 end
+        foreach (string str in multipleRotResultsFileNames)
+        {
+            mappedRotResults.Add(jsonDeserializer.readAndParseRotation(str));
+        }
+        // foreach (string str in multipleRotResultsFileNames) print(str);
+
+        if (isReadMultipleResultsFileNames)
+        {
+            // 呼叫function，給定需要avatarController紀錄的所有檔案名稱
+            avatarController.changeCurRecordPosFileNM(multipleRotResultsFileNames);
+            StartCoroutine(updateMultipleJointsRotationsSequential());
+        }
+        else
+        {
+            // Update single mapped rotation result
+            StartCoroutine(updateRotationOnce());
+        }
+        
     }
 
     // Update is called once per frame

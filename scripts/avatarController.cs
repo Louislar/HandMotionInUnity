@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 
 
@@ -20,6 +21,8 @@ public class avatarController : MonoBehaviour
     private Transform tmpTrans;
     [Header("Position recording settings")]
     public bool isRecordHumanPosition;
+    public bool isRecordMultiHumanPositions;
+    public List<string> HumanRotationFileNMs;
     public float positionRecordLength;
     private List<MediaPipeHandLMs> avatarPositionData;
 
@@ -171,16 +174,103 @@ public class avatarController : MonoBehaviour
             yield return new WaitForSeconds(0.05f);
         }
         jsonDeserializer jsonConverter = new jsonDeserializer();
-        //jsonConverter.serializeAndOutputFile(
-        //    new MediaPipeResult() { results = avatarPositionData.ToArray() }, 
-        //    "jsonPositionData/leftFrontKickCombinations/leftFrontKickPosition(True, False, True, False, False, False).json"
-        //    );
         jsonConverter.serializeAndOutputFile(
             new MediaPipeResult() { results = avatarPositionData.ToArray() },
-            "jsonPositionData/bodyMotionPosition/leftFrontKickPosition.json"
+            "jsonPositionData/leftFrontKickCombinations/previousGenData/leftFrontKickPosition(True, True, True, True, True, True).json"
             );
+        //jsonConverter.serializeAndOutputFile(
+        //    new MediaPipeResult() { results = avatarPositionData.ToArray() },
+        //    "jsonPositionData/bodyMotionPosition/leftFrontKickPosition.json"
+        //    );
         //print($"get bone: {avatarAnim.GetBoneTransform(HumanBodyBones.LeftUpperLeg).position.x}");
         yield return null;
+    }
+
+    /// <summary>
+    /// 根據hand rotation controller讀取不同檔案的旋轉資料，
+    /// 記錄成多筆position的檔案
+    /// </summary>
+    /// <returns></returns>
+    public IEnumerator multiplePositionsRecorder()
+    {
+        // 需要知道handRotationController切換讀取檔案的數量，使用changeCurRecordPosFileNM(string fileName)
+        // 固定每個檔案紀錄的時間，並且事前給定錄製檔案數量
+        int fileRecordCount = HumanRotationFileNMs.Count;
+        while(fileRecordCount==0)
+        {
+            fileRecordCount = HumanRotationFileNMs.Count;
+            yield return null;
+        }
+        int curFileIdx = 0;
+        // 每0.05f紀錄一次資料，總共600次，30秒
+        List<List<MediaPipeHandLMs>> multiPosData = new List<List<MediaPipeHandLMs>>();
+        List<HumanBodyBones> collectJoints = new List<HumanBodyBones>() {
+            HumanBodyBones.LeftUpperLeg, HumanBodyBones.LeftLowerLeg, HumanBodyBones.LeftFoot,
+            HumanBodyBones.RightUpperLeg, HumanBodyBones.RightLowerLeg, HumanBodyBones.RightFoot,
+            HumanBodyBones.Hips
+        };
+        while (curFileIdx<fileRecordCount)
+        {
+            // 紀錄單一檔案的資料
+            float recordTimeElapse = 0;
+            avatarPositionData = new List<MediaPipeHandLMs>();
+            while (recordTimeElapse < positionRecordLength)
+            {
+                List<LMDataPoint> tmpDataPonts = new List<LMDataPoint>();
+                foreach (HumanBodyBones _aBone in collectJoints)
+                {
+                    tmpDataPonts.Add(new LMDataPoint()
+                    {
+                        x = avatarAnim.GetBoneTransform(_aBone).position.x,
+                        y = avatarAnim.GetBoneTransform(_aBone).position.y,
+                        z = avatarAnim.GetBoneTransform(_aBone).position.z
+                    });
+                }
+                avatarPositionData.Add(new MediaPipeHandLMs()
+                {
+                    time = recordTimeElapse,
+                    data = tmpDataPonts
+                });
+                recordTimeElapse += 0.05f;
+                yield return new WaitForSeconds(0.05f);
+            }
+
+            multiPosData.Add(avatarPositionData);
+            ++curFileIdx;
+        }
+
+        // Output multiple json files
+        jsonDeserializer jsonConverter = new jsonDeserializer();
+        for(int i=0; i< fileRecordCount; ++i)
+        {
+            jsonConverter.serializeAndOutputFile(
+            new MediaPipeResult() { results = multiPosData[i].ToArray() },
+            HumanRotationFileNMs[i]
+            );
+        }
+        print("Finish record multiple position files");
+        yield return null;
+    }
+
+    /// <summary>
+    /// 所有需要紀錄的position檔案名稱
+    /// 用於一次性紀錄多個position檔案時使用
+    /// 搭配multiplePositionsRecorder()使用
+    /// </summary>
+    public void changeCurRecordPosFileNM(List<string> fileNames)
+    {
+        HumanRotationFileNMs = new List<string>();
+        foreach (string str in fileNames)
+        {
+            // 更新檔案名稱
+            string fileName = Path.GetFileName(str);
+            // 改變檔案名稱 + "_position" + ".json"
+            // TODO: 指定folder儲存position的輸出資料
+            HumanRotationFileNMs.Add(
+                Path.Combine(Application.dataPath, "jsonPositionData/leftFrontKickCombinations/" + fileName)
+                );
+            // print(curHumanRotationFileNM);
+        }
     }
 
     // Start is called before the first frame update
@@ -204,6 +294,10 @@ public class avatarController : MonoBehaviour
         if(isRecordHumanPosition)
         {
             StartCoroutine(positionRecorder());
+        }
+        if (isRecordMultiHumanPositions)
+        {
+            StartCoroutine(multiplePositionsRecorder());
         }
     }
 
