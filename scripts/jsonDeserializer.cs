@@ -65,7 +65,7 @@ public class jsonDeserializer : MonoBehaviour
         MediaPipeResult handRotation = JsonUtility.FromJson<MediaPipeResult>(
             "{\"results\":" + jsonText + "}");
         if(printText)
-            print(jsonText);
+            print(jsonText.Substring(0, 30));
         return handRotation;
     }
 }

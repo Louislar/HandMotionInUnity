@@ -25,6 +25,13 @@ public class avatarController : MonoBehaviour
     public List<string> HumanRotationFileNMs;
     public float positionRecordLength;
     private List<MediaPipeHandLMs> avatarPositionData;
+    [Header("Position read in settings")]
+    public bool isReadApplyHumanPositions;
+    public int readPositionsJointsNum;
+    public Vector3 originHipPosition;
+    private string readInHumanPositionFile;
+    private MediaPipeResult readInHumanPositionResult;
+    private handLMsController.JointBone[] SynthesisJointsPos;
 
     /// <summary>
     /// init joint points array with "essentialJointPoints" enum
@@ -147,10 +154,19 @@ public class avatarController : MonoBehaviour
         // 但是，應該需要將position校正到hip為原點(放到python裡面再做)
         // 需要能夠指定錄製時間長度
         float recordTimeElapse = 0;
+        //List<HumanBodyBones> collectJoints = new List<HumanBodyBones>() {
+        //    HumanBodyBones.LeftUpperLeg, HumanBodyBones.LeftLowerLeg, HumanBodyBones.LeftFoot, 
+        //    HumanBodyBones.RightUpperLeg, HumanBodyBones.RightLowerLeg, HumanBodyBones.RightFoot,
+        //    HumanBodyBones.Hips
+        //};
+        // 輸出所有在synthesis階段需要用到的骨架
         List<HumanBodyBones> collectJoints = new List<HumanBodyBones>() {
-            HumanBodyBones.LeftUpperLeg, HumanBodyBones.LeftLowerLeg, HumanBodyBones.LeftFoot, 
+            HumanBodyBones.LeftUpperLeg, HumanBodyBones.LeftLowerLeg, HumanBodyBones.LeftFoot,
             HumanBodyBones.RightUpperLeg, HumanBodyBones.RightLowerLeg, HumanBodyBones.RightFoot,
-            HumanBodyBones.Hips
+            HumanBodyBones.Hips,
+            HumanBodyBones.Spine, HumanBodyBones.Chest, HumanBodyBones.UpperChest,
+            HumanBodyBones.LeftUpperArm, HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand,
+            HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand
         };
         avatarPositionData = new List<MediaPipeHandLMs>();
         while (recordTimeElapse < positionRecordLength)
@@ -174,15 +190,16 @@ public class avatarController : MonoBehaviour
             yield return new WaitForSeconds(0.05f);
         }
         jsonDeserializer jsonConverter = new jsonDeserializer();
-        jsonConverter.serializeAndOutputFile(
-            new MediaPipeResult() { results = avatarPositionData.ToArray() },
-            "jsonPositionData/leftFrontKickCombinations/previousGenData/leftFrontKickPosition(True, True, True, True, True, True).json"
-            );
         //jsonConverter.serializeAndOutputFile(
         //    new MediaPipeResult() { results = avatarPositionData.ToArray() },
-        //    "jsonPositionData/bodyMotionPosition/leftFrontKickPosition.json"
+        //    "jsonPositionData/leftFrontKickCombinations/previousGenData/leftFrontKickPosition(True, True, True, True, True, True).json"
         //    );
-        //print($"get bone: {avatarAnim.GetBoneTransform(HumanBodyBones.LeftUpperLeg).position.x}");
+        jsonConverter.serializeAndOutputFile(
+            new MediaPipeResult() { results = avatarPositionData.ToArray() },
+            //"jsonPositionData/bodyMotionPosition/leftFrontKickPosition.json"
+            "jsonPositionData/bodyMotionPosition/leftFrontKickPositionFullJoints.json"  // 輸出所有身體joints使用的檔名
+            );
+        // print($"get bone: {avatarAnim.GetBoneTransform(HumanBodyBones.LeftUpperLeg).position.x}");
         yield return null;
     }
 
@@ -273,6 +290,35 @@ public class avatarController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 更新一次synthesis後的position data
+    /// </summary>
+    public void updateSynthesisPositionOnce(MediaPipeHandLMs newRots)
+    {
+        for (int i = 0; i < newRots.data.Count; ++i)
+        {
+            SynthesisJointsPos[i].Pos3D.x = newRots.data[i].x;
+            SynthesisJointsPos[i].Pos3D.y = newRots.data[i].y;
+            SynthesisJointsPos[i].Pos3D.z = newRots.data[i].z;
+        }
+    }
+
+    /// <summary>
+    /// TODO: 更新synthesis完成後的position data到avatar上
+    /// </summary>
+    /// <returns></returns>
+    public IEnumerator updateSynthesisPosition()
+    {
+        int curIndex = 0;
+        while (curIndex < readInHumanPositionResult.results.Length)
+        {
+            updateSynthesisPositionOnce(readInHumanPositionResult.results[curIndex]);
+            ++curIndex;
+            yield return new WaitForSeconds(0.05f);
+        }
+        yield return null;
+    }
+
     // Start is called before the first frame update
     void Start()
     {
@@ -286,6 +332,27 @@ public class avatarController : MonoBehaviour
         vNectModel.SkeletonScale = 0.8f;
         vNectModel.SkeletonMaterial = skMaterial;
         jointPoints = vNectModel.Init(avatarAnim);
+
+        // 讀取synthesis後的position data
+        // TODO: initialize the synthesis joint points array
+        SynthesisJointsPos = new handLMsController.JointBone[readPositionsJointsNum];
+        for (int i=0; i < readPositionsJointsNum; ++i) { SynthesisJointsPos[i] = new handLMsController.JointBone(); }
+        jsonDeserializer jsonDeserializer = new jsonDeserializer();
+        readInHumanPositionFile = "jsonPositionData/afterSynthesis/leftFrontKick.json";
+        readInHumanPositionResult = jsonDeserializer.readAndParseRotation(
+            readInHumanPositionFile
+            );
+        // For test 讀取原本從Unity output的DB position
+        //readInHumanPositionFile = "jsonPositionData/bodyMotionPosition/leftFrontKickPositionFullJoints.json";
+        //string jsonText = File.ReadAllText(Path.Combine(Application.dataPath, readInHumanPositionFile));
+        //readInHumanPositionResult = JsonUtility.FromJson<MediaPipeResult>(jsonText);
+        // For test end
+        // visualize synthesis後的position data
+        if (isReadApplyHumanPositions)
+        {
+            StartCoroutine(updateSynthesisPosition());
+        }
+
         if (isRecordHumanMotion)
         {
             StartCoroutine(rotationRecorder());
@@ -311,6 +378,7 @@ public class avatarController : MonoBehaviour
 
     private void OnAnimatorIK(int layerIndex)
     {
+
         if (isRotationFromHand)
         {
             avatarAnim.SetBoneLocalRotation(HumanBodyBones.RightShoulder, Quaternion.Euler(new Vector3()));
@@ -338,6 +406,41 @@ public class avatarController : MonoBehaviour
             avatarAnim.SetBoneLocalRotation(HumanBodyBones.LeftLowerLeg, jointPoints[PositionIndex.lShin.Int()].InitRotation);
             avatarAnim.SetBoneLocalRotation(HumanBodyBones.RightUpperLeg, jointPoints[PositionIndex.rThighBend.Int()].InitRotation);
             avatarAnim.SetBoneLocalRotation(HumanBodyBones.RightLowerLeg, jointPoints[PositionIndex.rShin.Int()].InitRotation);
+        }
+        // 更新讀取的synthesis human positions到human avatar身上
+        if(isReadApplyHumanPositions)
+        {
+            
+            avatarAnim.SetBoneLocalRotation(HumanBodyBones.RightShoulder, Quaternion.Euler(new Vector3()));
+            avatarAnim.SetBoneLocalRotation(HumanBodyBones.RightUpperArm, Quaternion.Euler(new Vector3()));
+            avatarAnim.SetBoneLocalRotation(HumanBodyBones.RightLowerArm, Quaternion.Euler(new Vector3()));
+            avatarAnim.SetBoneLocalRotation(HumanBodyBones.RightHand, Quaternion.Euler(new Vector3()));
+
+            avatarAnim.SetBoneLocalRotation(HumanBodyBones.LeftShoulder, Quaternion.Euler(new Vector3()));
+            avatarAnim.SetBoneLocalRotation(HumanBodyBones.LeftUpperArm, Quaternion.Euler(new Vector3()));
+            avatarAnim.SetBoneLocalRotation(HumanBodyBones.LeftLowerArm, Quaternion.Euler(new Vector3()));
+            avatarAnim.SetBoneLocalRotation(HumanBodyBones.LeftHand, Quaternion.Euler(new Vector3()));
+
+            //avatarAnim.SetBoneLocalRotation(HumanBodyBones.RightUpperLeg, Quaternion.Euler(new Vector3()));
+            //avatarAnim.SetBoneLocalRotation(HumanBodyBones.RightLowerLeg, Quaternion.Euler(new Vector3()));
+            avatarAnim.SetBoneLocalRotation(HumanBodyBones.RightFoot, Quaternion.Euler(new Vector3()));
+            avatarAnim.SetBoneLocalRotation(HumanBodyBones.RightToes, Quaternion.Euler(new Vector3()));
+
+            //avatarAnim.SetBoneLocalRotation(HumanBodyBones.LeftUpperLeg, Quaternion.Euler(new Vector3()));
+            //avatarAnim.SetBoneLocalRotation(HumanBodyBones.LeftLowerLeg, Quaternion.Euler(new Vector3()));
+            avatarAnim.SetBoneLocalRotation(HumanBodyBones.LeftFoot, Quaternion.Euler(new Vector3()));
+            avatarAnim.SetBoneLocalRotation(HumanBodyBones.LeftToes, Quaternion.Euler(new Vector3()));
+
+            print("synthesis position: " + (SynthesisJointsPos[2].Pos3D + originHipPosition).ToString());
+            //設定IK goal position的方法
+            avatarAnim.SetIKPositionWeight(AvatarIKGoal.LeftFoot, 1.0f);
+            avatarAnim.SetIKPositionWeight(AvatarIKGoal.RightFoot, 1.0f);
+            avatarAnim.SetIKPositionWeight(AvatarIKGoal.LeftHand, 1.0f);
+            avatarAnim.SetIKPositionWeight(AvatarIKGoal.RightHand, 1.0f);
+            avatarAnim.SetIKPosition(AvatarIKGoal.LeftFoot, SynthesisJointsPos[2].Pos3D + originHipPosition);
+            avatarAnim.SetIKPosition(AvatarIKGoal.RightFoot, SynthesisJointsPos[5].Pos3D + originHipPosition);
+            avatarAnim.SetIKPosition(AvatarIKGoal.LeftHand, SynthesisJointsPos[11].Pos3D + originHipPosition);
+            avatarAnim.SetIKPosition(AvatarIKGoal.RightHand, SynthesisJointsPos[14].Pos3D + originHipPosition);
         }
     }
 
